@@ -38,3 +38,8 @@ htmlcov/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local-only working / AI-agent files (kept out of the public repo)
+CLAUDE.md
+Gemini.md
+agent-status.md
