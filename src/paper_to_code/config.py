@@ -11,7 +11,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +32,8 @@ class Settings(BaseSettings):
 
     # --- AWS Bedrock (LLM) ---
     aws_region: str = "us-east-1"
+    # Auth option A: a Bedrock API key (bearer token). Auth option B: an IAM access-key pair.
+    aws_bearer_token_bedrock: SecretStr | None = None
     aws_access_key_id: SecretStr | None = None
     aws_secret_access_key: SecretStr | None = None
     bedrock_model_id: str = "us.anthropic.claude-sonnet-4-6"
@@ -72,7 +74,10 @@ class Settings(BaseSettings):
     # --- Readiness flags (used by `p2c check`) ---
     @property
     def has_bedrock(self) -> bool:
-        return _is_set(self.aws_access_key_id) and _is_set(self.aws_secret_access_key) and bool(self.bedrock_model_id)
+        has_auth = _is_set(self.aws_bearer_token_bedrock) or (
+            _is_set(self.aws_access_key_id) and _is_set(self.aws_secret_access_key)
+        )
+        return has_auth and bool(self.bedrock_model_id)
 
     @property
     def has_voyage(self) -> bool:
@@ -87,8 +92,23 @@ class Settings(BaseSettings):
         for path in (self.data_dir, self.chroma_dir, self.papers_dir, self.repos_dir):
             path.mkdir(parents=True, exist_ok=True)
 
+    def apply_bedrock_env(self) -> None:
+        """Export AWS/Bedrock auth to the process environment so boto3 picks it up.
+
+        Supports both a Bedrock API key (``AWS_BEARER_TOKEN_BEDROCK``) and a classic
+        IAM access-key pair. Region is always set.
+        """
+        os.environ.setdefault("AWS_REGION", self.aws_region)
+        os.environ.setdefault("AWS_DEFAULT_REGION", self.aws_region)
+        if _is_set(self.aws_bearer_token_bedrock):
+            os.environ["AWS_BEARER_TOKEN_BEDROCK"] = self.aws_bearer_token_bedrock.get_secret_value()  # type: ignore[union-attr]
+        if _is_set(self.aws_access_key_id):
+            os.environ["AWS_ACCESS_KEY_ID"] = self.aws_access_key_id.get_secret_value()  # type: ignore[union-attr]
+        if _is_set(self.aws_secret_access_key):
+            os.environ["AWS_SECRET_ACCESS_KEY"] = self.aws_secret_access_key.get_secret_value()  # type: ignore[union-attr]
+
     def apply_langsmith_env(self) -> None:
-        """Export LangSmith settings to the process environment so LangChain picks them up.
+        """Export LangSmith settings so LangChain emits traces.
 
         Sets both the new ``LANGSMITH_*`` and legacy ``LANGCHAIN_*`` variable names.
         """
