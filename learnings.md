@@ -50,6 +50,15 @@ Each non-trivial decision recorded as **Decision → Why → Alternative conside
   installer's separate PATH handling.
 - **Alternative:** The astral standalone installer — works too, but adds a PATH step for the current shell.
 
+### tree-sitter node API is method-based; `parse()` takes `str`
+- **Decision:** Code chunking adapts to the installed binding where node accessors are *methods*
+  (`node.kind()`, `node.child(i)`, `node.start_byte()`, `node.start_position().row`) and `Parser.parse()`
+  takes a `str` (byte offsets index its UTF-8 encoding). A thin adapter hides this from the walk logic.
+- **Why:** The bundled binding (tree-sitter 0.25.x via `tree-sitter-language-pack`) diverges from the classic
+  py-tree-sitter property API; found by introspection after a failing test, not by guessing from docs.
+- **Alternative:** Pin classic py-tree-sitter + per-language grammar packages — rejected; the language pack
+  ships many grammars as prebuilt (Windows-friendly) wheels, well worth one small adapter.
+
 ---
 
 ## Operating notes — tracking AWS cost & free credits
