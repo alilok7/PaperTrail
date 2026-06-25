@@ -103,13 +103,18 @@ Working end-to-end. On the reference test (*Attention Is All You Need* + nanoGPT
 The encoder case is the gap-detection showcase: the agent recognizes the paper's *bidirectional* encoder is
 absent from the causal/decoder-only repo rather than forcing a false match.
 
+**Generalization (unseen pair):** on *An Image is Worth 16×16 Words* + `google-research/vision_transformer` it also
+scores **3/3** — patch embedding and the `[class]` token → `VisionTransformer.__call__`, multi-head self-attention →
+`Encoder1DBlock.__call__` (~0.97–0.98 confidence) — confirming it isn't overfit to the reference case.
+
 ## Limitations & next steps
 
-- OCR is disabled, so scanned (image-only) PDFs aren't supported — digital text only.
+- OCR is disabled (digital-text PDFs only). On long PDFs, Docling's layout preprocessing can hit an
+  out-of-memory error on later pages on low-RAM machines; those pages are skipped (early pages still ingest fine).
+- One paper+repo pair per store — retrieval isn't yet scoped by paper/repo id, so use a separate `DATA_DIR` per
+  pair (metadata-scoped retrieval is a planned enhancement).
 - Reference following is single-hop (no full reference graph).
 - Voyage's free tier without a payment method is rate-limited (~3 req/min); add a payment method (free tokens
   still apply) for smooth ingestion.
-- Next: a generalization run on a second, unseen paper+repo to confirm the system isn't overfit to the
-  reference case.
 
 See `learnings.md` for the design decisions behind the build.

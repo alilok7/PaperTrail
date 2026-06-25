@@ -61,9 +61,23 @@ Each non-trivial decision recorded as **Decision → Why → Alternative conside
 
 ### Disabled Docling OCR for paper ingestion
 - **Decision:** Build the `DocumentConverter` with `PdfPipelineOptions(do_ocr=False)`.
-- **Why:** Papers are digital text, so OCR adds no value — but it caused `std::bad_alloc` (out-of-memory) on
-  large pages during preprocessing and slows ingestion. Layout parsing still runs and produces clean chunks.
-- **Alternative:** Keep the default OCR pipeline — rejected; pure memory/latency cost for zero benefit here.
+- **Why:** Research papers are digital text, so OCR adds no value — only latency and memory. Layout parsing still
+  runs and produces clean chunks.
+- **Caveat (honest):** disabling OCR did **not** eliminate the `std::bad_alloc` seen on this machine — it still
+  occurs during *layout* preprocessing on the later pages of long PDFs (memory limit while rendering page images).
+  It's non-fatal: Docling skips those pages and the early pages (which held the queried content) ingest fine
+  (41 chunks for Attention, 48 for ViT). A full fix would lower the page-image scale or use a higher-memory box.
+- **Alternative:** Keep default OCR — rejected; pure cost for zero benefit on digital PDFs.
+
+### Generalization holds: 3/3 on an unseen paper+repo (ViT)
+- **Decision:** Validated on *An Image is Worth 16x16 Words* + `google-research/vision_transformer` (never seen
+  during development), in an isolated data store. Scored 3/3: patch embedding and `[class]` token →
+  `VisionTransformer.__call__`, multi-head self-attention → `Encoder1DBlock.__call__` (0.97–0.98 confidence).
+- **Why it matters:** confirms the system isn't overfit to the Attention/nanoGPT reference case, and that the
+  earlier reconcile-prompt discernment rule generalizes (it found the right symbols in a JAX/Flax codebase with a
+  totally different style).
+- **Note:** the store doesn't yet filter retrieval by paper_id/repo_id, so each paper+repo pair uses its own data
+  dir (`DATA_DIR=...`). Metadata-scoped retrieval (one store, many pairs) is a clean future enhancement.
 
 ### Reference test passes 3/3; gap detection needed a general discernment rule
 - **Decision:** The first live run scored 2/3 — multi-head attention → `CausalSelfAttention` and FFN → `MLP`
