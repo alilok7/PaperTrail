@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     langsmith_api_key: SecretStr | None = None
     langsmith_tracing: bool = True
     langsmith_project: str = "paper-trail"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"  # EU: https://eu.api.smith.langchain.com
 
     # --- LLM parameters ---
     temperature: float = 0.0
@@ -121,6 +122,8 @@ class Settings(BaseSettings):
         os.environ["LANGCHAIN_API_KEY"] = key
         os.environ["LANGSMITH_PROJECT"] = self.langsmith_project
         os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
+        os.environ["LANGSMITH_ENDPOINT"] = self.langsmith_endpoint
+        os.environ["LANGCHAIN_ENDPOINT"] = self.langsmith_endpoint
 
 
 @lru_cache
