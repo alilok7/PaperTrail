@@ -67,6 +67,21 @@ class PaperIngestResult:
     chunks: list[Chunk]
 
 
+def _default_converter():
+    """A DocumentConverter with OCR disabled.
+
+    Research papers are digital text, so OCR adds no value — only memory pressure (it
+    triggered std::bad_alloc on large pages here) and latency. Layout parsing still runs.
+    """
+    from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+
+    options = PdfPipelineOptions()
+    options.do_ocr = False
+    return DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)})
+
+
 def ingest_paper(
     pdf_path: str | Path,
     paper_id: str | None = None,
@@ -79,11 +94,10 @@ def ingest_paper(
     First conversion downloads Docling's layout models (a one-time cost).
     """
     from docling.chunking import HybridChunker
-    from docling.document_converter import DocumentConverter
 
     pdf_path = Path(pdf_path)
     paper_id = paper_id or pdf_path.stem
-    converter = converter or DocumentConverter()
+    converter = converter or _default_converter()
     chunker = chunker or HybridChunker()
 
     document = converter.convert(str(pdf_path)).document
