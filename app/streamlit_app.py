@@ -11,7 +11,6 @@ import streamlit as st
 
 from paper_to_code.config import get_settings
 from paper_to_code.models import Direction, Verdict
-from paper_to_code.service import PaperTrail
 
 st.set_page_config(page_title="PaperTrail", page_icon="📄", layout="wide")
 
@@ -31,7 +30,10 @@ _DIRECTIONS = {
 
 
 @st.cache_resource(show_spinner=False)
-def get_service() -> PaperTrail:
+def get_service():
+    # Heavy import (torch/Docling/Chroma/LangChain) kept lazy so the page paints first.
+    from paper_to_code.service import PaperTrail
+
     return PaperTrail()
 
 
@@ -83,7 +85,8 @@ def main() -> None:
     st.caption("Reconcile an ML paper with the code that implements it — with a cited verdict.")
 
     settings = get_settings()
-    service = get_service()
+    with st.spinner("Loading models and index… first load can take ~30s"):
+        service = get_service()
 
     with st.sidebar:
         st.header("Ingest")
