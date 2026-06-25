@@ -11,7 +11,17 @@ Heavy imports are done lazily inside commands so `p2c --help` stays fast.
 
 from __future__ import annotations
 
+import sys
+
 import typer
+
+# Windows consoles default to cp1252 and crash printing math symbols (√, ×, …) that appear
+# in verdict explanations. Force UTF-8 output, replacing anything truly unencodable.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        pass
 
 app = typer.Typer(
     help="PaperTrail — reconcile an ML paper with its implementation and return a cited verdict.",
