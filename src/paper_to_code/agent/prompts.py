@@ -50,7 +50,9 @@ def format_paper_evidence(hits: list[RetrievedChunk]) -> str:
     blocks = []
     for i, h in enumerate(hits, 1):
         m = h.chunk.metadata
-        header = f"[P{i}] section={m.get('section', '')!r} page={m.get('page', '')} (id={h.chunk.id})"
+        page = m.get("page")
+        page = "" if page in (None, -1) else page  # -1 is our "unknown page" sentinel
+        header = f"[P{i}] section={m.get('section', '')!r} page={page} (id={h.chunk.id})"
         blocks.append(f"{header}\n{h.chunk.text}")
     return "\n\n".join(blocks)
 

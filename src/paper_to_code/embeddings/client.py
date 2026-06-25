@@ -46,19 +46,31 @@ def batch_by_budget(texts: list[str], max_items: int, max_tokens: int) -> Iterat
 
 
 def call_with_retry(fn, *, max_retries: int = 5, wait_seconds: float = 21.0):
-    """Call ``fn`` retrying on Voyage rate-limit errors with a fixed wait.
+    """Call ``fn`` retrying on transient Voyage errors.
 
-    Free-tier accounts without a payment method are capped at ~3 requests/min; adding a
-    payment method (free tokens still apply) removes the need for this backoff.
+    Rate-limit errors wait a fixed period (to clear the per-minute window — free-tier
+    accounts without a payment method are capped at ~3 requests/min); other transient
+    errors (server/connection) use exponential backoff with jitter. Non-transient errors
+    (auth, invalid request) are not retried.
     """
+    import random
     import time
 
-    from voyageai.error import RateLimitError
+    from voyageai.error import (
+        APIConnectionError,
+        RateLimitError,
+        ServerError,
+        ServiceUnavailableError,
+    )
 
+    transient = (RateLimitError, ServerError, ServiceUnavailableError, APIConnectionError)
     for attempt in range(max_retries + 1):
         try:
             return fn()
-        except RateLimitError:
+        except transient as exc:
             if attempt >= max_retries:
                 raise
-            time.sleep(wait_seconds)
+            if isinstance(exc, RateLimitError):
+                time.sleep(wait_seconds)
+            else:
+                time.sleep(min(wait_seconds, 2.0**attempt) + random.random())

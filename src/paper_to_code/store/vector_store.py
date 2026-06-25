@@ -43,7 +43,8 @@ class VectorStore:
             ids=[c.id for c in chunks],
             embeddings=embeddings,
             documents=[c.text for c in chunks],
-            metadatas=[dict(c.metadata) for c in chunks],
+            # Chroma rejects empty metadata dicts; always keep at least the source.
+            metadatas=[dict(c.metadata) or {"source": c.source} for c in chunks],
         )
 
     def count(self) -> int:
