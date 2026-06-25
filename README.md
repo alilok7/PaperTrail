@@ -65,6 +65,8 @@ API key, and a LangSmith API key. See `.env.example` for the exact variables.
 
 ## Usage
 
+For the full architecture and a step-by-step demo walkthrough, see **[docs/GUIDE.md](docs/GUIDE.md)**.
+
 ```bash
 # Verify credentials are wired up
 uv run p2c check
