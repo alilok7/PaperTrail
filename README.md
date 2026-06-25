@@ -90,7 +90,26 @@ Paper *"Attention Is All You Need"* + code [nanoGPT](https://github.com/karpathy
 mismatch — nanoGPT is decoder-only while the paper is encoder-decoder — is the showcase for gap detection:
 asking "where is the encoder implemented?" should return `NOT_IMPLEMENTED`.
 
-## Status
+## Results
 
-🚧 In active development. See `agent-status.md` for current progress and `learnings.md` for the design
-decisions behind the build.
+Working end-to-end. On the reference test (*Attention Is All You Need* + nanoGPT) it scores **3/3**:
+
+| Question | Verdict | Citation |
+| --- | --- | --- |
+| Multi-head attention (§3) | `MATCH_SIMPLIFIED` | `model.py` · `CausalSelfAttention` |
+| Position-wise feed-forward | `MATCH_SIMPLIFIED` | `model.py` · `MLP` |
+| Where is the encoder? | `NOT_IMPLEMENTED` | — (nanoGPT is decoder-only) |
+
+The encoder case is the gap-detection showcase: the agent recognizes the paper's *bidirectional* encoder is
+absent from the causal/decoder-only repo rather than forcing a false match.
+
+## Limitations & next steps
+
+- OCR is disabled, so scanned (image-only) PDFs aren't supported — digital text only.
+- Reference following is single-hop (no full reference graph).
+- Voyage's free tier without a payment method is rate-limited (~3 req/min); add a payment method (free tokens
+  still apply) for smooth ingestion.
+- Next: a generalization run on a second, unseen paper+repo to confirm the system isn't overfit to the
+  reference case.
+
+See `learnings.md` for the design decisions behind the build.

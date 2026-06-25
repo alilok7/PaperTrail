@@ -59,6 +59,23 @@ Each non-trivial decision recorded as **Decision → Why → Alternative conside
 - **Alternative:** Pin classic py-tree-sitter + per-language grammar packages — rejected; the language pack
   ships many grammars as prebuilt (Windows-friendly) wheels, well worth one small adapter.
 
+### Disabled Docling OCR for paper ingestion
+- **Decision:** Build the `DocumentConverter` with `PdfPipelineOptions(do_ocr=False)`.
+- **Why:** Papers are digital text, so OCR adds no value — but it caused `std::bad_alloc` (out-of-memory) on
+  large pages during preprocessing and slows ingestion. Layout parsing still runs and produces clean chunks.
+- **Alternative:** Keep the default OCR pipeline — rejected; pure memory/latency cost for zero benefit here.
+
+### Reference test passes 3/3; gap detection needed a general discernment rule
+- **Decision:** The first live run scored 2/3 — multi-head attention → `CausalSelfAttention` and FFN → `MLP`
+  matched correctly, but "where is the encoder?" returned `MATCH_SIMPLIFIED` (citing nanoGPT's causal `Block`).
+  Added one general rule to the reconcile prompt: a structurally similar component is not a match unless the
+  queried concept's *distinguishing* features are present; otherwise return `NOT_IMPLEMENTED`. Re-run scored 3/3
+  (encoder → `NOT_IMPLEMENTED`, confidence 0.92, explanation citing bidirectional-vs-causal).
+- **Why:** Honest gap detection is the headline feature; the model was conflating a decoder block with an encoder.
+- **Honesty note / Alternative:** The change came *after* seeing the answer key, which risks teaching-to-the-test.
+  It's mitigated by keeping the rule fully general (no mention of "encoder"/nanoGPT) — but the real proof of
+  non-overfitting is the generalization run on an unseen paper+repo. Hardcoding the encoder answer was rejected.
+
 ---
 
 ## Operating notes — tracking AWS cost & free credits
