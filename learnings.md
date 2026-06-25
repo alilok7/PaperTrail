@@ -90,6 +90,11 @@ Each non-trivial decision recorded as **Decision → Why → Alternative conside
   It's mitigated by keeping the rule fully general (no mention of "encoder"/nanoGPT) — but the real proof of
   non-overfitting is the generalization run on an unseen paper+repo. Hardcoding the encoder answer was rejected.
 
+### Metadata-scoped retrieval supports multi-pair stores
+- **Decision:** Built a multi-pair store capability by leveraging Chroma's native `where` metadata filters in the vector store and dynamically caching a scoped BM25 index.
+- **Why:** The original `learnings.md` acknowledged the system didn't support isolation of papers and repos. This polish feature adds robust library management (list, scope, delete). The `HybridRetriever` wraps these scoped searches via the `.scoped()` factory, allowing `reference.py` and `loop.py` to remain entirely untouched while returning mathematically precise isolated semantic results.
+- **Alternative:** Continue requesting users swap `DATA_DIR` per pair — rejected; a poor user experience.
+
 ---
 
 ## Operating notes — tracking AWS cost & free credits
