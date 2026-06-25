@@ -60,8 +60,29 @@ cp .env.example .env      # then paste your AWS Bedrock, Voyage, and LangSmith k
 uv run p2c check
 ```
 
-You need: AWS credentials with a Claude (Sonnet-class) model enabled in Bedrock, a Voyage AI API key, and a
-LangSmith API key. See `.env.example` for the exact variables.
+You need: Amazon Bedrock access (a Bedrock API key **or** AWS credentials) with a Claude model enabled, a Voyage AI
+API key, and a LangSmith API key. See `.env.example` for the exact variables.
+
+## Usage
+
+```bash
+# Verify credentials are wired up
+uv run p2c check
+
+# Ingest a paper (PDF) and the repo that implements it
+uv run p2c ingest-paper path/to/paper.pdf --id attention
+uv run p2c ingest-code https://github.com/karpathy/nanoGPT --id nanoGPT
+
+# Ask how a concept maps between the two (direction auto-detected, or force it)
+uv run p2c ask "How is multi-head attention from Section 3 implemented in the code?"
+uv run p2c ask "Where is the Transformer encoder implemented?" --direction paper-to-code
+
+# Web UI
+uv run streamlit run app/streamlit_app.py
+
+# Score against the hand-labeled answer key (downloads + ingests the paper & repo)
+uv run python scripts/evaluate.py --ingest
+```
 
 ## Reference test case
 
