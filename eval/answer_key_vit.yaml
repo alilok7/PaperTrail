@@ -28,3 +28,8 @@ cases:
     direction: paper_to_code
     expected_verdicts: [MATCH, MATCH_SIMPLIFIED, EXTRA_IN_CODE]
     expect_code_symbol: null
+
+  - question: "What concept from the paper does the Encoder1DBlock class implement?"
+    direction: code_to_paper
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED]
+    expect_code_symbol: Encoder1DBlock

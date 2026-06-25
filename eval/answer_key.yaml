@@ -25,3 +25,13 @@ cases:
     direction: paper_to_code
     expected_verdicts: [NOT_IMPLEMENTED]
     expect_code_symbol: null
+
+  - question: "How is positional encoding implemented in the code?"
+    direction: paper_to_code
+    expected_verdicts: [MATCH_SIMPLIFIED, MATCH]   # paper: sinusoidal; nanoGPT: learned embeddings
+    expect_code_symbol: null
+
+  - question: "What concept from the paper does the CausalSelfAttention class implement?"
+    direction: code_to_paper
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED]
+    expect_code_symbol: CausalSelfAttention
