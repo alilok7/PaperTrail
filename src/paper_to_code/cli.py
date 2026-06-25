@@ -4,7 +4,10 @@ Commands:
     p2c check                         verify credentials are wired up
     p2c ingest-paper PATH [--id ID]   parse + embed + store a paper PDF
     p2c ingest-code SRC [--id ID]     clone/scan + embed + store a repo (URL or local path)
-    p2c ask "QUESTION" [--direction]  retrieve both sides, reconcile, print the verdict
+    p2c ask "QUESTION" [--paper] [--repo]  retrieve both sides (optionally scoped), print verdict
+    p2c list                          list ingested papers and repos with chunk counts
+    p2c remove-paper ID [--yes]       remove a paper from the store
+    p2c remove-repo ID [--yes]        remove a repo from the store
 
 Heavy imports are done lazily inside commands so `p2c --help` stays fast.
 """
@@ -157,14 +160,81 @@ def ask(
     direction: str = typer.Option("auto", "--direction", help="auto | paper-to-code | code-to-paper"),
     k: int = typer.Option(8, "--k", help="Top-k chunks per side."),
     follow_refs: bool = typer.Option(True, "--follow-refs/--no-follow-refs", help="Single-hop reference following."),
+    paper: str = typer.Option(None, "--paper", help="Scope to this paper_id (from `p2c list`)."),
+    repo: str = typer.Option(None, "--repo", help="Scope to this repo_id (from `p2c list`)."),
 ) -> None:
     """Ask how a concept maps between the paper and the code, and print the verdict."""
     from paper_to_code.service import PaperTrail
 
+    scope_parts = []
+    if paper:
+        scope_parts.append(f"paper={paper}")
+    if repo:
+        scope_parts.append(f"repo={repo}")
+    scope_label = f"  [scope: {', '.join(scope_parts)}]" if scope_parts else "  [scope: all]"
+    typer.echo(f"Asking…{scope_label}")
+
     result = PaperTrail().ask(
-        question, direction=_parse_direction(direction), k=k, follow_refs=follow_refs
+        question,
+        direction=_parse_direction(direction),
+        k=k,
+        follow_refs=follow_refs,
+        paper_id=paper,
+        repo_id=repo,
     )
     _print_verdict(result)
+
+
+@app.command("list")
+def list_library() -> None:
+    """List all ingested papers and repos with their chunk counts."""
+    from paper_to_code.service import PaperTrail
+
+    lib = PaperTrail().list_library()
+
+    typer.echo("Papers")
+    typer.echo("------")
+    if lib["papers"]:
+        for pid, count in sorted(lib["papers"].items()):
+            typer.echo(f"  {pid}  ({count} chunks)")
+    else:
+        typer.echo("  (none)")
+    typer.echo("")
+    typer.echo("Repos")
+    typer.echo("-----")
+    if lib["repos"]:
+        for rid, count in sorted(lib["repos"].items()):
+            typer.echo(f"  {rid}  ({count} chunks)")
+    else:
+        typer.echo("  (none)")
+
+
+@app.command("remove-paper")
+def remove_paper_cmd(
+    paper_id: str = typer.Argument(..., help="paper_id to remove (shown by `p2c list`)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Remove a paper's chunks from the store."""
+    from paper_to_code.service import PaperTrail
+
+    if not yes:
+        typer.confirm(f"Remove paper '{paper_id}' from the store?", abort=True)
+    n = PaperTrail().remove_paper(paper_id)
+    typer.echo(f"Removed {n} chunks for paper '{paper_id}'.")
+
+
+@app.command("remove-repo")
+def remove_repo_cmd(
+    repo_id: str = typer.Argument(..., help="repo_id to remove (shown by `p2c list`)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Remove a repo's chunks from the store."""
+    from paper_to_code.service import PaperTrail
+
+    if not yes:
+        typer.confirm(f"Remove repo '{repo_id}' from the store?", abort=True)
+    n = PaperTrail().remove_repo(repo_id)
+    typer.echo(f"Removed {n} chunks for repo '{repo_id}'.")
 
 
 if __name__ == "__main__":

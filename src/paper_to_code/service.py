@@ -51,17 +51,53 @@ class PaperTrail:
             self.code_retriever.refresh()
         return result
 
+    # -- Library management ------------------------------------------------
+
+    def list_library(self) -> dict[str, dict[str, int]]:
+        """Return ``{papers: {id: count}, repos: {id: count}}``."""
+        return {
+            "papers": self.paper_store.group_counts("paper_id"),
+            "repos": self.code_store.group_counts("repo_id"),
+        }
+
+    def remove_paper(self, paper_id: str) -> int:
+        """Delete all chunks for *paper_id* and return the count removed."""
+        n = self.paper_store.delete({"paper_id": paper_id})
+        self.paper_retriever.refresh()
+        return n
+
+    def remove_repo(self, repo_id: str) -> int:
+        """Delete all chunks for *repo_id* and return the count removed."""
+        n = self.code_store.delete({"repo_id": repo_id})
+        self.code_retriever.refresh()
+        return n
+
+    # -- Ask ---------------------------------------------------------------
+
     def ask(
         self,
         question: str,
         direction: Direction | None = None,
         k: int | None = None,
         follow_refs: bool = True,
+        paper_id: str | None = None,
+        repo_id: str | None = None,
     ) -> AgentResult:
+        # Scope retrievers when a specific paper/repo is selected.
+        paper_r = (
+            self.paper_retriever.scoped({"paper_id": paper_id})
+            if paper_id
+            else self.paper_retriever
+        )
+        code_r = (
+            self.code_retriever.scoped({"repo_id": repo_id})
+            if repo_id
+            else self.code_retriever
+        )
         return run_agent(
             question,
-            paper_retriever=self.paper_retriever,
-            code_retriever=self.code_retriever,
+            paper_retriever=paper_r,
+            code_retriever=code_r,
             settings=self.settings,
             direction=direction,
             k=k or self.settings.retrieval_top_k,

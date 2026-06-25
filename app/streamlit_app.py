@@ -28,6 +28,8 @@ _DIRECTIONS = {
     "Code → Paper": Direction.CODE_TO_PAPER,
 }
 
+_ALL_SCOPE = "All (no scope)"
+
 
 @st.cache_resource(show_spinner=False)
 def get_service():
@@ -37,10 +39,13 @@ def get_service():
     return PaperTrail()
 
 
-def render_verdict(result) -> None:
+def render_verdict(result, scope_label: str) -> None:
     verdict: Verdict = result.verdict
     label, renderer = _VERDICT_RENDER.get(verdict.verdict.value, (verdict.verdict.value, st.info))
     renderer(f"**{label}**  ·  confidence {verdict.confidence:.0%}  ·  {result.direction.value}")
+
+    if scope_label:
+        st.caption(f"🔍 Scope: {scope_label}")
 
     st.markdown(f"**Explanation**\n\n{verdict.explanation}")
     st.caption(f"concept: {result.concept}  ·  reformulated query: {result.reformulated_query}")
@@ -88,7 +93,9 @@ def main() -> None:
     with st.spinner("Loading models and index… first load can take ~30s"):
         service = get_service()
 
+    # ── Sidebar ──────────────────────────────────────────────────────────
     with st.sidebar:
+        # -- Ingest section -----------------------------------------------
         st.header("Ingest")
         counts = service.counts()
         st.caption(f"Indexed: {counts['paper_chunks']} paper chunks · {counts['code_chunks']} code chunks")
@@ -102,6 +109,7 @@ def main() -> None:
             with st.spinner("Parsing + embedding the paper… (first run downloads Docling models)"):
                 result = service.ingest_paper(dest)
             st.success(f"Stored {len(result.chunks)} paper chunks ({result.paper_id}).")
+            st.rerun()
 
         st.subheader("Code (repo)")
         repo = st.text_input("Git URL or local path", placeholder="https://github.com/karpathy/nanoGPT")
@@ -109,6 +117,91 @@ def main() -> None:
             with st.spinner("Cloning + embedding the repo…"):
                 result = service.ingest_code(repo)
             st.success(f"Stored {len(result.chunks)} code chunks ({result.repo_id}).")
+            st.rerun()
+
+        st.divider()
+
+        # -- Library section ----------------------------------------------
+        st.header("📚 Library")
+        lib = service.list_library()
+        papers = lib["papers"]
+        repos = lib["repos"]
+
+        # Papers list with delete buttons
+        st.subheader("Papers")
+        if papers:
+            for pid, cnt in sorted(papers.items()):
+                col_name, col_btn = st.columns([3, 1])
+                with col_name:
+                    st.markdown(f"**{pid}** — {cnt} chunks")
+                with col_btn:
+                    if st.button("🗑", key=f"del_paper_{pid}", help=f"Remove {pid}"):
+                        service.remove_paper(pid)
+                        st.toast(f"Removed paper '{pid}'.")
+                        st.rerun()
+        else:
+            st.caption("No papers ingested yet.")
+
+        # Repos list with delete buttons
+        st.subheader("Repos")
+        if repos:
+            for rid, cnt in sorted(repos.items()):
+                col_name, col_btn = st.columns([3, 1])
+                with col_name:
+                    st.markdown(f"**{rid}** — {cnt} chunks")
+                with col_btn:
+                    if st.button("🗑", key=f"del_repo_{rid}", help=f"Remove {rid}"):
+                        service.remove_repo(rid)
+                        st.toast(f"Removed repo '{rid}'.")
+                        st.rerun()
+        else:
+            st.caption("No repos ingested yet.")
+
+        st.divider()
+
+        # -- Scope selection -----------------------------------------------
+        st.header("🔍 Active Scope")
+        st.caption("Limit retrieval to a specific paper/repo pair, or search everything.")
+
+        paper_options = [_ALL_SCOPE] + sorted(papers.keys())
+        repo_options = [_ALL_SCOPE] + sorted(repos.keys())
+
+        # Guard against stale selection (e.g. after a delete)
+        if "active_paper" not in st.session_state or st.session_state.active_paper not in paper_options:
+            st.session_state.active_paper = _ALL_SCOPE
+        if "active_repo" not in st.session_state or st.session_state.active_repo not in repo_options:
+            st.session_state.active_repo = _ALL_SCOPE
+
+        active_paper = st.selectbox(
+            "Active paper",
+            paper_options,
+            index=paper_options.index(st.session_state.active_paper),
+            key="sel_paper",
+        )
+        active_repo = st.selectbox(
+            "Active repo",
+            repo_options,
+            index=repo_options.index(st.session_state.active_repo),
+            key="sel_repo",
+        )
+        st.session_state.active_paper = active_paper
+        st.session_state.active_repo = active_repo
+
+    # ── Main area ────────────────────────────────────────────────────────
+    # Resolve scope
+    paper_id = active_paper if active_paper != _ALL_SCOPE else None
+    repo_id = active_repo if active_repo != _ALL_SCOPE else None
+
+    scope_parts = []
+    if paper_id:
+        scope_parts.append(f"paper: {paper_id}")
+    if repo_id:
+        scope_parts.append(f"repo: {repo_id}")
+    scope_label = " · ".join(scope_parts) if scope_parts else ""
+
+    # Show current scope badge in main area
+    if scope_label:
+        st.info(f"🔍 **Scoped to:** {scope_label}")
 
     question = st.text_input(
         "Ask a question",
@@ -125,9 +218,14 @@ def main() -> None:
     if st.button("Ask", type="primary", disabled=not question):
         with st.spinner("Retrieving both sides and reconciling…"):
             result = service.ask(
-                question, direction=_DIRECTIONS[direction_label], k=k, follow_refs=follow_refs
+                question,
+                direction=_DIRECTIONS[direction_label],
+                k=k,
+                follow_refs=follow_refs,
+                paper_id=paper_id,
+                repo_id=repo_id,
             )
-        render_verdict(result)
+        render_verdict(result, scope_label)
 
 
 if __name__ == "__main__":

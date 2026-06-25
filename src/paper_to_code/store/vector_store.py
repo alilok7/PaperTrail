@@ -4,10 +4,14 @@ We precompute embeddings with Voyage and pass the vectors to Chroma directly (no
 ``embedding_function``), because voyage-context-3 embeds chunks in document-context
 groups, which Chroma's per-text embedding function can't express. Cosine space matches
 Voyage's normalized embeddings.
+
+Read paths accept an optional ``where`` dict (Chroma metadata filter) so retrieval can
+be scoped to a single paper/repo without changing collections.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 from paper_to_code.models import Chunk, RetrievedChunk, SourceType
@@ -50,21 +54,32 @@ class VectorStore:
     def count(self) -> int:
         return self.collection.count()
 
-    def all_chunks(self) -> list[Chunk]:
-        got = self.collection.get(include=["documents", "metadatas"])
+    def all_chunks(self, where: dict | None = None) -> list[Chunk]:
+        kwargs: dict = {"include": ["documents", "metadatas"]}
+        if where:
+            kwargs["where"] = where
+        got = self.collection.get(**kwargs)
         return [
             _chunk_from_record(cid, doc, meta)
             for cid, doc, meta in zip(got["ids"], got["documents"], got["metadatas"])
         ]
 
-    def vector_search(self, query_embedding: list[float], k: int) -> list[RetrievedChunk]:
+    def vector_search(
+        self, query_embedding: list[float], k: int, where: dict | None = None
+    ) -> list[RetrievedChunk]:
         if self.collection.count() == 0:
             return []
-        res = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(k, self.collection.count()),
-            include=["documents", "metadatas", "distances"],
-        )
+        query_kwargs: dict = {
+            "query_embeddings": [query_embedding],
+            "n_results": min(k, self.collection.count()),
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if where:
+            query_kwargs["where"] = where
+        res = self.collection.query(**query_kwargs)
+        # Chroma returns empty inner lists when the filter matches nothing.
+        if not res["ids"] or not res["ids"][0]:
+            return []
         out: list[RetrievedChunk] = []
         for cid, doc, meta, dist in zip(
             res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0]
@@ -72,3 +87,22 @@ class VectorStore:
             chunk = _chunk_from_record(cid, doc, meta)
             out.append(RetrievedChunk(chunk=chunk, score=1.0 - float(dist)))  # cosine sim
         return out
+
+    def group_counts(self, key: str) -> dict[str, int]:
+        """Return ``{metadata_value: chunk_count}`` for a given metadata key.
+
+        Chroma has no group-by, so we fetch all metadatas and tally in Python.
+        """
+        got = self.collection.get(include=["metadatas"])
+        counter: Counter[str] = Counter()
+        for meta in got["metadatas"]:
+            val = meta.get(key)
+            if val is not None:
+                counter[str(val)] += 1
+        return dict(counter)
+
+    def delete(self, where: dict) -> int:
+        """Delete all chunks matching ``where`` and return how many were removed."""
+        before = self.collection.count()
+        self.collection.delete(where=where)
+        return before - self.collection.count()

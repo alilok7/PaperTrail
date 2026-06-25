@@ -3,11 +3,15 @@
 Vector search captures meaning; BM25 captures exact tokens (symbol names, equation labels).
 RRF combines them by *rank* (not raw score), which avoids having to calibrate two
 incomparable score scales.
+
+The BM25 index is built lazily per scope (``where`` filter) so scoped retrieval only
+ranks the chunks that belong to the selected paper/repo.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Protocol
 
 from rank_bm25 import BM25Okapi
@@ -64,8 +68,10 @@ class _Embedder(Protocol):
 
 
 class _Store(Protocol):
-    def vector_search(self, query_embedding: list[float], k: int) -> list[RetrievedChunk]: ...
-    def all_chunks(self) -> list[Chunk]: ...
+    def vector_search(
+        self, query_embedding: list[float], k: int, where: dict | None = None
+    ) -> list[RetrievedChunk]: ...
+    def all_chunks(self, where: dict | None = None) -> list[Chunk]: ...
 
 
 class HybridRetriever:
@@ -75,14 +81,45 @@ class HybridRetriever:
         self.store = store
         self.embedder = embedder
         self.rrf_k = rrf_k
-        self.bm25 = BM25Index(store.all_chunks())
+        # Per-scope BM25 cache: key is a hashable form of the `where` dict.
+        self._bm25_cache: dict[tuple | None, BM25Index] = {}
+        # Pre-build the unscoped index (backward-compatible).
+        self._bm25_cache[None] = BM25Index(store.all_chunks())
+
+    @staticmethod
+    def _cache_key(where: dict | None) -> tuple | None:
+        return frozenset(where.items()) if where else None
+
+    def _bm25_for(self, where: dict | None) -> BM25Index:
+        key = self._cache_key(where)
+        if key not in self._bm25_cache:
+            self._bm25_cache[key] = BM25Index(self.store.all_chunks(where=where))
+        return self._bm25_cache[key]
 
     def refresh(self) -> None:
-        """Rebuild the BM25 index from the store (call after adding chunks)."""
-        self.bm25 = BM25Index(self.store.all_chunks())
+        """Clear the BM25 cache (call after adding/deleting chunks)."""
+        self._bm25_cache.clear()
+
+    def search(self, query: str, k: int = 8, where: dict | None = None) -> list[RetrievedChunk]:
+        query_vec = self.embedder.embed_query(query)
+        vector_hits = self.store.vector_search(query_vec, k, where=where)
+        bm25_hits = self._bm25_for(where).search(query, k)
+        return reciprocal_rank_fusion([vector_hits, bm25_hits], k=self.rrf_k, top_n=k)
+
+    def scoped(self, where: dict) -> "ScopedRetriever":
+        """Return a thin wrapper that fixes ``where`` so callers see the same interface."""
+        return ScopedRetriever(parent=self, where=where)
+
+
+@dataclass
+class ScopedRetriever:
+    """Passes a fixed ``where`` filter into ``HybridRetriever.search``.
+
+    Conforms to the ``_Retriever`` Protocol used by ``agent/loop.py`` and
+    ``retrieval/reference.py``, so they need no changes.
+    """
+    parent: HybridRetriever
+    where: dict
 
     def search(self, query: str, k: int = 8) -> list[RetrievedChunk]:
-        query_vec = self.embedder.embed_query(query)
-        vector_hits = self.store.vector_search(query_vec, k)
-        bm25_hits = self.bm25.search(query, k)
-        return reciprocal_rank_fusion([vector_hits, bm25_hits], k=self.rrf_k, top_n=k)
+        return self.parent.search(query, k, where=self.where)
