@@ -1,0 +1,27 @@
+# Hand-labeled reference test: "Attention Is All You Need" + nanoGPT.
+# This is the final exam — do NOT tune the system against it.
+# nanoGPT is decoder-only, so the encoder question is the gap-detection showcase.
+
+paper:
+  id: attention
+  pdf_url: https://arxiv.org/pdf/1706.03762
+
+code:
+  id: nanoGPT
+  repo_url: https://github.com/karpathy/nanoGPT
+
+cases:
+  - question: "How is the multi-head attention from Section 3 implemented in the code?"
+    direction: paper_to_code
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED]
+    expect_code_symbol: CausalSelfAttention
+
+  - question: "How is the position-wise feed-forward network implemented in the code?"
+    direction: paper_to_code
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED]
+    expect_code_symbol: MLP
+
+  - question: "Where is the Transformer encoder implemented in the code?"
+    direction: paper_to_code
+    expected_verdicts: [NOT_IMPLEMENTED]
+    expect_code_symbol: null
