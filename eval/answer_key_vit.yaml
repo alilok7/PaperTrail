@@ -1,0 +1,30 @@
+# Generalization test (unseen during development): Vision Transformer.
+# This is a qualitative sanity check on a NEW paper+repo — verdicts are reviewed by hand,
+# so expected_verdicts are kept broad and code symbols are left open.
+# Run with a separate data dir so it doesn't mix with the reference store:
+#   $env:DATA_DIR='data/generalization'
+#   uv run python scripts/evaluate.py --ingest --no-follow-refs --key eval/answer_key_vit.yaml
+
+paper:
+  id: vit
+  pdf_url: https://arxiv.org/pdf/2010.11929
+
+code:
+  id: vision_transformer
+  repo_url: https://github.com/google-research/vision_transformer
+
+cases:
+  - question: "How is the image split into patches and embedded (patch embedding) in the code?"
+    direction: paper_to_code
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED, EXTRA_IN_CODE]
+    expect_code_symbol: null
+
+  - question: "How is the multi-head self-attention of the Transformer encoder implemented in the code?"
+    direction: paper_to_code
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED]
+    expect_code_symbol: null
+
+  - question: "How is the learnable classification token (the [class] token) implemented in the code?"
+    direction: paper_to_code
+    expected_verdicts: [MATCH, MATCH_SIMPLIFIED, EXTRA_IN_CODE]
+    expect_code_symbol: null

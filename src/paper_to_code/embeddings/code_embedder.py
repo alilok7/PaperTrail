@@ -22,7 +22,7 @@ class CodeEmbedder:
         *,
         model: str | None = None,
         max_items: int = 128,
-        max_tokens: int = 100_000,
+        max_tokens: int = 8_000,  # stay under Voyage's free-tier 10K tokens/min per request
         max_chars: int = 120_000,
     ) -> None:
         settings = get_settings()

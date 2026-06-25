@@ -27,7 +27,7 @@ class PaperEmbedder:
         *,
         model: str | None = None,
         group_size: int = 64,
-        max_tokens: int = 80_000,
+        max_tokens: int = 8_000,  # stay under Voyage's free-tier 10K tokens/min per request
         max_chars: int = 120_000,
     ) -> None:
         settings = get_settings()

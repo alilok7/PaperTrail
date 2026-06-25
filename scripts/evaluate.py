@@ -32,9 +32,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ingest", action="store_true", help="Download + ingest paper and repo first.")
     parser.add_argument("--no-follow-refs", dest="follow_refs", action="store_false")
+    parser.add_argument("--key", default=str(KEY_PATH), help="Path to the answer-key YAML.")
     args = parser.parse_args()
 
-    key = yaml.safe_load(KEY_PATH.read_text(encoding="utf-8"))
+    key = yaml.safe_load(Path(args.key).read_text(encoding="utf-8"))
     settings = get_settings()
     service = PaperTrail(settings)
 
