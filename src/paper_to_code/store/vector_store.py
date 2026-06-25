@@ -21,11 +21,15 @@ def _chunk_from_record(cid: str, document: str, metadata: dict) -> Chunk:
 class VectorStore:
     """A single persistent Chroma collection of precomputed embeddings."""
 
-    def __init__(self, name: str, persist_dir: str | Path) -> None:
+    def __init__(self, name: str, persist_dir: str | Path | None = None, *, client=None) -> None:
         import chromadb
 
-        Path(persist_dir).mkdir(parents=True, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=str(persist_dir))
+        if client is None:
+            if persist_dir is None:
+                raise ValueError("Provide either persist_dir or an existing client.")
+            Path(persist_dir).mkdir(parents=True, exist_ok=True)
+            client = chromadb.PersistentClient(path=str(persist_dir))
+        self.client = client
         self.collection = self.client.get_or_create_collection(
             name=name, metadata={"hnsw:space": "cosine"}
         )
