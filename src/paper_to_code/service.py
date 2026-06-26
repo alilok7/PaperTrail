@@ -13,6 +13,7 @@ from paper_to_code.agent.loop import AgentResult, run_agent
 from paper_to_code.config import Settings, get_settings
 from paper_to_code.embeddings.code_embedder import CodeEmbedder
 from paper_to_code.embeddings.paper_embedder import PaperEmbedder
+from paper_to_code.errors import IngestionError
 from paper_to_code.ingestion.code import CodeIngestResult, ingest_code
 from paper_to_code.ingestion.paper import PaperIngestResult, ingest_paper
 from paper_to_code.models import Direction
@@ -64,7 +65,20 @@ class PaperTrail:
         result = ingest_code(
             source, repo_id, repos_dir=self.settings.repos_dir, on_progress=on_progress
         )
+        limit = self.settings.max_code_chunks
+        if len(result.chunks) > limit:
+            raise IngestionError(
+                f"'{result.repo_id}' produced {len(result.chunks)} code chunks, over the limit "
+                f"of {limit}. Large repos embed very slowly on the Voyage free tier (~3 req/min) "
+                "— this would take hours. Use a smaller or more focused repository, or raise "
+                "MAX_CODE_CHUNKS in .env if you really want it and can wait."
+            )
         if result.chunks:
+            report(
+                on_progress,
+                f"Embedding {len(result.chunks)} code chunks (free tier can be slow) …",
+                0.0,
+            )
             embeddings = self.code_embedder.embed_documents(
                 [c.text for c in result.chunks], on_progress=on_progress
             )

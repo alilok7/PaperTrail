@@ -14,6 +14,11 @@ from pathlib import Path
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Repo root (…/src/paper_to_code/config.py -> three parents up). The data store is
+# anchored here so it's the SAME store no matter which directory you launch from —
+# otherwise a CWD-relative "data/" silently creates an empty store elsewhere.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _is_set(secret: SecretStr | None) -> bool:
     """True only if a secret is present *and* non-empty (env vars can be set to '')."""
@@ -57,8 +62,14 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 8
     rrf_k: int = 60
 
+    # --- Ingestion guardrails ---
+    # Refuse pathologically large repos: on the Voyage free tier (~3 requests/min) a repo
+    # with thousands of chunks would take hours to embed and looks like a hang. Override
+    # with MAX_CODE_CHUNKS in .env if you really want a huge repo and can wait.
+    max_code_chunks: int = 2000
+
     # --- Storage paths (everything runtime lives under data/, which is gitignored) ---
-    data_dir: Path = Path("data")
+    data_dir: Path = _PROJECT_ROOT / "data"
 
     @property
     def chroma_dir(self) -> Path:
