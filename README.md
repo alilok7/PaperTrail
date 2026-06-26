@@ -79,6 +79,11 @@ uv run p2c ingest-code https://github.com/karpathy/nanoGPT --id nanoGPT
 uv run p2c ask "How is multi-head attention from Section 3 implemented in the code?"
 uv run p2c ask "Where is the Transformer encoder implemented?" --direction paper-to-code
 
+# Library: many pairs can live in one store. List them, then scope a question to one pair
+uv run p2c list
+uv run p2c ask "How is multi-head attention implemented?" --paper attention --repo nanoGPT
+uv run p2c remove-paper attention      # or: remove-repo nanoGPT   (add -y to skip the prompt)
+
 # Web UI
 uv run streamlit run app/streamlit_app.py
 
@@ -113,8 +118,9 @@ scores **3/3** — patch embedding and the `[class]` token → `VisionTransforme
 
 - OCR is disabled (digital-text PDFs only). On long PDFs, Docling's layout preprocessing can hit an
   out-of-memory error on later pages on low-RAM machines; those pages are skipped (early pages still ingest fine).
-- One paper+repo pair per store — retrieval isn't yet scoped by paper/repo id, so use a separate `DATA_DIR` per
-  pair (metadata-scoped retrieval is a planned enhancement).
+- Many paper+repo pairs can share one store: each chunk is tagged with its `paper_id`/`repo_id`, and selecting an
+  active pair scopes **both** the vector and BM25 sides so evidence never mixes across pairs (`p2c list` /
+  `--paper`/`--repo`, or the sidebar in the UI). With nothing selected, retrieval searches everything.
 - Reference following is single-hop (no full reference graph).
 - Voyage's free tier without a payment method is rate-limited (~3 req/min); add a payment method (free tokens
   still apply) for smooth ingestion.

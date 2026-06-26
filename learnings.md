@@ -95,6 +95,21 @@ Each non-trivial decision recorded as **Decision → Why → Alternative conside
 - **Why:** The original `learnings.md` acknowledged the system didn't support isolation of papers and repos. This polish feature adds robust library management (list, scope, delete). The `HybridRetriever` wraps these scoped searches via the `.scoped()` factory, allowing `reference.py` and `loop.py` to remain entirely untouched while returning mathematically precise isolated semantic results.
 - **Alternative:** Continue requesting users swap `DATA_DIR` per pair — rejected; a poor user experience.
 
+### Production-hardening pass: fail loud, never break the page
+- **Decision:** Added a user-facing error type (`errors.py`: `PaperTrailError`/`IngestionError`), validated git
+  URLs and local paths before cloning, mapped low-level git failures (not-found / auth / network) to actionable
+  messages, cleaned up half-finished clones, and wrapped every front-end service call so failures render as clean
+  messages instead of tracebacks. Added a progress channel (`progress.py`) threaded through ingestion + the
+  embedders (incl. a rate-limit countdown via `call_with_retry(on_retry=…)`), surfaced as a live status panel in
+  Streamlit and printed lines in the CLI.
+- **Why:** The feature worked but the UX didn't: a bad URL or a Voyage rate-limit produced a silent hang or a raw
+  stack trace, and slow free-tier embedding gave no feedback. For a demo, "is it working?" must always be visible.
+- **Also fixed:** a bare `pytest` walked into a cloned repo under `data/repos/` whose `conftest.py` registered an
+  xdist-only plugin and aborted collection — pinned `testpaths = ["tests"]` so the suite never depends on runtime
+  data. Persisted the last verdict in Streamlit session state so sidebar actions (deletes) don't wipe the answer.
+- **Alternative:** Leave error handling to Streamlit's default exception page — rejected; it's a broken-looking
+  page and leaks internals.
+
 ---
 
 ## Operating notes — tracking AWS cost & free credits

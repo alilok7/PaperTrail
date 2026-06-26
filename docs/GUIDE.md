@@ -84,7 +84,7 @@ with the *target* side's model and searched against the *target* collection.
 
 ### 3.1 Paper ingestion — `src/paper_to_code/ingestion/paper.py`
 - **Docling** `DocumentConverter` parses the PDF in a layout-aware way (headings, paragraphs, tables). OCR is
-  **disabled** (papers are digital text; OCR is pure cost).
+  **disabled** (papers are digital text; OCR i/s pure cost).
 - **HybridChunker** splits the document into token-sized chunks that respect section boundaries.
 - For each chunk we record metadata: `section` (heading path), `page`, and any cross-reference labels found in the
   text (`equations`, `figures`, `section_refs`). These drive both **citations** and **reference-following**.
@@ -212,19 +212,22 @@ paper/code citations and an expander showing the raw retrieved chunks.
 
 ## 7. Running your own / a third test case
 
-Because retrieval isn't yet scoped by paper/repo id, **use a separate data store per paper+repo pair** so they
-don't mix. Set `DATA_DIR` to a fresh folder:
+Many paper+repo pairs can live in **one** store: every chunk is tagged with its `paper_id`/`repo_id`, and
+selecting an active pair scopes **both** the vector and BM25 sides so evidence never mixes. Just ingest and scope:
 
 ```bash
-# PowerShell
-$env:DATA_DIR='data/mycase'
 uv run p2c ingest-paper path/to/your_paper.pdf --id yourpaper
 uv run p2c ingest-code  https://github.com/owner/yourrepo --id yourrepo
-uv run p2c ask "your question here"
+
+uv run p2c list                                  # everything ingested, with chunk counts
+uv run p2c ask "your question here" --paper yourpaper --repo yourrepo
+uv run p2c remove-paper yourpaper                # tidy up (remove-repo too; -y skips the prompt)
 ```
 
-To go back to the reference case, just unset it (`Remove-Item Env:DATA_DIR`) or open a new shell — the default is
-`data/`.
+In the Streamlit UI the sidebar does the same: a **Library** panel lists papers/repos with delete buttons, and the
+**Active scope** dropdowns choose the pair every question is scoped to. With nothing selected, retrieval searches
+everything (backward-compatible). You can still isolate a case entirely by pointing `DATA_DIR` at a fresh folder,
+but it's no longer required.
 
 The evaluation harness can score a labelled set for any pair:
 ```bash
@@ -262,7 +265,8 @@ uv run python scripts/evaluate.py --ingest --no-follow-refs --key eval/your_key.
 - **Docling OOM on long PDFs:** layout preprocessing can fail (`std::bad_alloc`) on later pages on low-RAM
   machines. It's non-fatal — those pages are skipped and the early pages (which usually hold the queried content)
   ingest fine.
-- **One pair per store:** use a separate `DATA_DIR` per paper+repo pair (see §7).
+- **Many pairs per store:** retrieval is scoped by `paper_id`/`repo_id`, so one store holds many pairs without
+  evidence mixing — select an active pair (CLI `--paper`/`--repo`, or the sidebar). See §7.
 - **LangSmith key:** must be from the **US** region for the default endpoint (`p2c check` confirms it live).
 
 For the *why* behind each design choice, see `learnings.md`.
