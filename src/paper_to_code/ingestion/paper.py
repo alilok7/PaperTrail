@@ -20,7 +20,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
+from paper_to_code.errors import IngestionError
 from paper_to_code.models import Chunk
+from paper_to_code.progress import ProgressFn, report
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from docling.chunking import HybridChunker
@@ -88,19 +90,37 @@ def ingest_paper(
     *,
     converter: "DocumentConverter | None" = None,
     chunker: "HybridChunker | None" = None,
+    on_progress: ProgressFn | None = None,
 ) -> PaperIngestResult:
     """Parse and chunk a paper PDF into a list of paper :class:`Chunk` objects.
 
-    First conversion downloads Docling's layout models (a one-time cost).
+    First conversion downloads Docling's layout models (a one-time cost). Raises
+    :class:`IngestionError` for a missing/non-PDF file or an unparseable document.
     """
     from docling.chunking import HybridChunker
 
     pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise IngestionError(f"PDF not found: {pdf_path}.")
+    if pdf_path.is_dir():
+        raise IngestionError(f"Expected a PDF file but got a folder: {pdf_path}.")
+    if pdf_path.suffix.lower() != ".pdf":
+        raise IngestionError(f"Not a PDF: {pdf_path.name}. Upload a .pdf file.")
+
     paper_id = paper_id or pdf_path.stem
     converter = converter or _default_converter()
     chunker = chunker or HybridChunker()
 
-    document = converter.convert(str(pdf_path)).document
+    report(on_progress, "Parsing PDF (layout analysis)…", None)
+    try:
+        document = converter.convert(str(pdf_path)).document
+    except Exception as exc:  # noqa: BLE001 - surface a clean message, never a traceback
+        raise IngestionError(
+            f"Could not parse '{pdf_path.name}'. It may be corrupted, image-only, or an "
+            f"unsupported format. ({type(exc).__name__})"
+        ) from exc
+
+    report(on_progress, "Chunking the document…", None)
     chunks: list[Chunk] = []
     for i, dc in enumerate(chunker.chunk(dl_doc=document)):
         headings = list(dc.meta.headings or [])
@@ -108,4 +128,5 @@ def ingest_paper(
         metadata = chunk_metadata(paper_id, i, dc.text, headings, page)
         chunks.append(Chunk(id=f"{paper_id}::p{i}", text=dc.text, source="paper", metadata=metadata))
 
+    report(on_progress, f"Parsed {len(chunks)} paper chunks.", None)
     return PaperIngestResult(paper_id=paper_id, chunks=chunks)

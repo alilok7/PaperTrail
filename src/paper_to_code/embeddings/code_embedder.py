@@ -11,6 +11,7 @@ from paper_to_code.embeddings.client import (
     make_voyage_client,
     truncate,
 )
+from paper_to_code.progress import ProgressFn, report
 
 
 class CodeEmbedder:
@@ -32,14 +33,30 @@ class CodeEmbedder:
         self.max_tokens = max_tokens
         self.max_chars = max_chars
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(
+        self, texts: list[str], *, on_progress: ProgressFn | None = None
+    ) -> list[list[float]]:
         prepared = [truncate(t, self.max_chars) for t in texts]
+        batches = list(batch_by_budget(prepared, self.max_items, self.max_tokens))
+        total = len(batches)
         out: list[list[float]] = []
-        for batch in batch_by_budget(prepared, self.max_items, self.max_tokens):
+        for i, batch in enumerate(batches, 1):
+            report(on_progress, f"Embedding code … batch {i}/{total}", (i - 1) / total)
+
+            def _on_retry(exc, attempt, wait, i=i, total=total):
+                report(
+                    on_progress,
+                    f"Voyage rate limit — waiting {wait:.0f}s, then retrying "
+                    f"(batch {i}/{total}, attempt {attempt})",
+                    (i - 1) / total,
+                )
+
             result = call_with_retry(
-                lambda b=batch: self.client.embed(b, model=self.model, input_type="document")
+                lambda b=batch: self.client.embed(b, model=self.model, input_type="document"),
+                on_retry=_on_retry,
             )
             out.extend(result.embeddings)
+        report(on_progress, "Embedding complete.", 1.0)
         return out
 
     def embed_query(self, text: str) -> list[float]:

@@ -16,6 +16,7 @@ from paper_to_code.embeddings.paper_embedder import PaperEmbedder
 from paper_to_code.ingestion.code import CodeIngestResult, ingest_code
 from paper_to_code.ingestion.paper import PaperIngestResult, ingest_paper
 from paper_to_code.models import Direction
+from paper_to_code.progress import ProgressFn, report
 from paper_to_code.retrieval.hybrid import HybridRetriever
 from paper_to_code.store.vector_store import VectorStore
 
@@ -35,20 +36,42 @@ class PaperTrail:
         self.paper_retriever = HybridRetriever(self.paper_store, self.paper_embedder, rrf_k=self.settings.rrf_k)
         self.code_retriever = HybridRetriever(self.code_store, self.code_embedder, rrf_k=self.settings.rrf_k)
 
-    def ingest_paper(self, pdf_path: str | Path, paper_id: str | None = None) -> PaperIngestResult:
-        result = ingest_paper(pdf_path, paper_id)
+    def ingest_paper(
+        self,
+        pdf_path: str | Path,
+        paper_id: str | None = None,
+        *,
+        on_progress: ProgressFn | None = None,
+    ) -> PaperIngestResult:
+        result = ingest_paper(pdf_path, paper_id, on_progress=on_progress)
         if result.chunks:
-            embeddings = self.paper_embedder.embed_documents([c.text for c in result.chunks])
+            embeddings = self.paper_embedder.embed_documents(
+                [c.text for c in result.chunks], on_progress=on_progress
+            )
+            report(on_progress, "Storing in the vector index …", None)
             self.paper_store.add(result.chunks, embeddings)
             self.paper_retriever.refresh()
+            report(on_progress, f"Indexed {len(result.chunks)} paper chunks.", 1.0)
         return result
 
-    def ingest_code(self, source: str | Path, repo_id: str | None = None) -> CodeIngestResult:
-        result = ingest_code(source, repo_id, repos_dir=self.settings.repos_dir)
+    def ingest_code(
+        self,
+        source: str | Path,
+        repo_id: str | None = None,
+        *,
+        on_progress: ProgressFn | None = None,
+    ) -> CodeIngestResult:
+        result = ingest_code(
+            source, repo_id, repos_dir=self.settings.repos_dir, on_progress=on_progress
+        )
         if result.chunks:
-            embeddings = self.code_embedder.embed_documents([c.text for c in result.chunks])
+            embeddings = self.code_embedder.embed_documents(
+                [c.text for c in result.chunks], on_progress=on_progress
+            )
+            report(on_progress, "Storing in the vector index …", None)
             self.code_store.add(result.chunks, embeddings)
             self.code_retriever.refresh()
+            report(on_progress, f"Indexed {len(result.chunks)} code chunks.", 1.0)
         return result
 
     # -- Library management ------------------------------------------------

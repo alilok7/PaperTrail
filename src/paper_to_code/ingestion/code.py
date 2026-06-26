@@ -13,12 +13,16 @@ takes ``str``; the small adapter helpers below hide that so the walk stays reada
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
+from urllib.parse import urlparse
 
+from paper_to_code.errors import IngestionError
 from paper_to_code.models import Chunk
+from paper_to_code.progress import ProgressFn, report
 
 # File extension -> tree-sitter language name.
 LANGUAGE_BY_EXT: dict[str, str] = {
@@ -36,6 +40,8 @@ LANGUAGE_BY_EXT: dict[str, str] = {
     ".cpp": "cpp",
     ".cc": "cpp",
     ".hpp": "cpp",
+    ".cu": "cuda",   # CUDA kernels (parsed by the cuda grammar)
+    ".cuh": "cuda",
     ".cs": "csharp",
 }
 
@@ -169,20 +175,75 @@ def iter_source_files(root: Path) -> Iterator[Path]:
             yield path
 
 
+_GIT_URL_SCHEMES = {"http", "https", "git", "ssh"}
+
+
 def _looks_like_url(source: str) -> bool:
     return "://" in source or source.startswith("git@")
 
 
+def _derive_repo_id(url: str) -> str:
+    """Best-effort repo name from a clone URL (``.../owner/repo.git`` -> ``repo``)."""
+    name = url.rstrip("/").split("/")[-1].removesuffix(".git")
+    return name or "repo"
+
+
+def _validate_git_url(url: str) -> None:
+    """Reject obviously-malformed URLs before shelling out to git."""
+    if url.startswith("git@"):  # scp-style SSH: git@host:owner/repo.git
+        if ":" not in url:
+            raise IngestionError(f"Malformed SSH git URL: {url!r}.")
+        return
+    parsed = urlparse(url)
+    if parsed.scheme not in _GIT_URL_SCHEMES or not parsed.netloc:
+        raise IngestionError(
+            f"{url!r} is not a valid repository. Provide a public git URL "
+            "(e.g. https://github.com/owner/repo) or a path to a local folder."
+        )
+
+
+def _friendly_clone_error(url: str, exc: Exception) -> str:
+    """Map a low-level git failure to an actionable, user-facing message."""
+    text = str(exc).lower()
+    if any(s in text for s in ("could not resolve host", "unable to access", "timed out", "timeout")):
+        return f"Could not reach {url}. Check your internet connection and the URL."
+    if any(s in text for s in ("repository not found", "not found", "404")):
+        return f"Repository not found: {url}. Check the URL; only public repositories are supported."
+    if any(s in text for s in ("authentication", "permission denied", "403", "could not read username", "access denied")):
+        return (
+            f"Access denied for {url}. This looks like a private repository — only public "
+            "repositories can be cloned here."
+        )
+    if "git" in text and any(s in text for s in ("not found", "executable", "no such file")):
+        return "Git is not installed or not on PATH. Install git, then try again."
+    first_line = (str(exc).strip().splitlines() or [""])[0]
+    return f"Failed to clone {url}: {first_line[:200]}"
+
+
 def clone_repo(url: str, repos_dir: str | Path, repo_id: str | None = None) -> tuple[str, Path]:
-    """Shallow-clone ``url`` into ``repos_dir``; reuse an existing non-empty clone."""
+    """Shallow-clone ``url`` into ``repos_dir``, reusing a previous *healthy* clone.
+
+    A leftover directory from a failed clone (no ``.git``) is discarded and re-cloned, and
+    a clone that fails part-way is cleaned up so it can't be mistaken for a good one.
+    Predictable failures are raised as :class:`IngestionError` with an actionable message.
+    """
     from git import Repo
 
-    repo_id = repo_id or url.rstrip("/").split("/")[-1].removesuffix(".git")
+    _validate_git_url(url)
+    repo_id = repo_id or _derive_repo_id(url)
     dest = Path(repos_dir) / repo_id
+
     if dest.exists() and any(dest.iterdir()):
-        return repo_id, dest
+        if (dest / ".git").exists():
+            return repo_id, dest  # reuse a healthy clone
+        shutil.rmtree(dest, ignore_errors=True)  # leftover from an earlier failed clone
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    Repo.clone_from(url, str(dest), multi_options=["--depth=1"])
+    try:
+        Repo.clone_from(url, str(dest), multi_options=["--depth=1"])
+    except Exception as exc:  # noqa: BLE001 - normalize every git failure for the front-ends
+        shutil.rmtree(dest, ignore_errors=True)  # never leave a half-clone behind
+        raise IngestionError(_friendly_clone_error(url, exc)) from exc
     return repo_id, dest
 
 
@@ -198,15 +259,30 @@ def ingest_code(
     repo_id: str | None = None,
     *,
     repos_dir: str | Path = "data/repos",
+    on_progress: ProgressFn | None = None,
 ) -> CodeIngestResult:
-    """Ingest a repo from a git URL or a local path into code chunks."""
+    """Ingest a repo from a git URL or a local path into code chunks.
+
+    Raises :class:`IngestionError` for bad URLs, clone failures, or a missing local path.
+    """
     if isinstance(source, str) and _looks_like_url(source):
+        report(on_progress, f"Cloning {source} …", None)
         repo_id, repo_path = clone_repo(source, repos_dir, repo_id)
     else:
         repo_path = Path(source)
+        if not repo_path.exists():
+            raise IngestionError(
+                f"Local path not found: {source}. Provide an existing folder or a public "
+                "git URL (e.g. https://github.com/owner/repo)."
+            )
+        if not repo_path.is_dir():
+            raise IngestionError(f"Not a folder: {source}. Point at a repository directory.")
         repo_id = repo_id or repo_path.name
 
+    report(on_progress, "Scanning source files …", None)
+    files = list(iter_source_files(repo_path))
     chunks: list[Chunk] = []
-    for file_path in iter_source_files(repo_path):
+    for file_path in files:
         chunks.extend(chunk_file(file_path, repo_path, repo_id))
+    report(on_progress, f"Parsed {len(chunks)} definitions from {len(files)} files.", None)
     return CodeIngestResult(repo_id=repo_id, repo_path=repo_path, chunks=chunks)
