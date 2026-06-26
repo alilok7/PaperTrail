@@ -66,6 +66,10 @@ _IGNORE_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv", "env", "dist", "build",
     ".mypy_cache", ".pytest_cache", ".tox", "site-packages", ".idea", ".vscode",
     "vendor", "third_party", ".eggs",
+    # Skip non-implementation trees: these rarely hold the paper's core code but often
+    # bloat a repo enormously (e.g. microsoft/LoRA vendors all of transformers under
+    # examples/) and dilute retrieval. The actual implementation lives in the package.
+    "examples", "example", "docs", "doc", "tests", "test",
 }
 
 

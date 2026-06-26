@@ -64,3 +64,16 @@ def test_iter_source_files_skips_ignored_dirs(tmp_path):
 
     found = {p.name for p in iter_source_files(tmp_path)}
     assert found == {"a.py"}
+
+
+def test_iter_source_files_skips_examples_tests_docs(tmp_path):
+    # The core implementation at the root is kept; bloat trees are skipped (this is what
+    # lets a repo like microsoft/LoRA, which vendors transformers under examples/, ingest
+    # to just its loralib/ package).
+    _write(tmp_path, "core.py", "def core():\n    return 1\n")
+    for d in ("examples", "tests", "docs"):
+        (tmp_path / d).mkdir()
+        _write(tmp_path, f"{d}/x.py", "def x():\n    return 2\n")
+
+    found = {p.name for p in iter_source_files(tmp_path)}
+    assert found == {"core.py"}
