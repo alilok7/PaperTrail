@@ -42,6 +42,17 @@ def _status(ok: bool) -> str:
     return "OK" if ok else "MISSING"
 
 
+def _fail(message: str):
+    """Print a clean error and exit non-zero (no traceback)."""
+    typer.secho(message, fg=typer.colors.RED, err=True)
+    raise typer.Exit(code=1)
+
+
+def _echo_progress(message: str, fraction) -> None:
+    """Progress sink for ingestion — prints phase/batch lines (incl. rate-limit waits)."""
+    typer.echo(f"  • {message}")
+
+
 def _parse_direction(value: str | None):
     from paper_to_code.models import Direction
 
@@ -106,11 +117,21 @@ def ingest_paper_cmd(
     paper_id: str = typer.Option(None, "--id", help="Identifier for the paper (defaults to file stem)."),
 ) -> None:
     """Parse, embed, and store a paper PDF."""
+    from paper_to_code.errors import PaperTrailError
     from paper_to_code.service import PaperTrail
 
     typer.echo(f"Ingesting paper: {pdf_path} (first run downloads Docling models)...")
-    result = PaperTrail().ingest_paper(pdf_path, paper_id)
-    typer.echo(f"Stored {len(result.chunks)} paper chunks for '{result.paper_id}'.")
+    try:
+        result = PaperTrail().ingest_paper(pdf_path, paper_id, on_progress=_echo_progress)
+    except PaperTrailError as exc:
+        _fail(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        _fail(f"Unexpected error ({type(exc).__name__}): {exc}")
+
+    if not result.chunks:
+        typer.secho("Warning: no text was extracted; nothing was stored.", fg=typer.colors.YELLOW)
+    else:
+        typer.echo(f"Stored {len(result.chunks)} paper chunks for '{result.paper_id}'.")
 
 
 @app.command("ingest-code")
@@ -119,11 +140,26 @@ def ingest_code_cmd(
     repo_id: str = typer.Option(None, "--id", help="Identifier for the repo (defaults to repo name)."),
 ) -> None:
     """Clone/scan, embed, and store a code repository."""
+    from paper_to_code.errors import PaperTrailError
     from paper_to_code.service import PaperTrail
 
     typer.echo(f"Ingesting code: {source} ...")
-    result = PaperTrail().ingest_code(source, repo_id)
-    typer.echo(f"Stored {len(result.chunks)} code chunks for '{result.repo_id}' at {result.repo_path}.")
+    try:
+        result = PaperTrail().ingest_code(source, repo_id, on_progress=_echo_progress)
+    except PaperTrailError as exc:
+        _fail(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        _fail(f"Unexpected error ({type(exc).__name__}): {exc}")
+
+    if not result.chunks:
+        typer.secho(
+            "Warning: no supported source files were found; nothing was stored.",
+            fg=typer.colors.YELLOW,
+        )
+    else:
+        typer.echo(
+            f"Stored {len(result.chunks)} code chunks for '{result.repo_id}' at {result.repo_path}."
+        )
 
 
 def _print_verdict(result) -> None:
@@ -164,7 +200,24 @@ def ask(
     repo: str = typer.Option(None, "--repo", help="Scope to this repo_id (from `p2c list`)."),
 ) -> None:
     """Ask how a concept maps between the paper and the code, and print the verdict."""
+    from paper_to_code.errors import PaperTrailError
     from paper_to_code.service import PaperTrail
+
+    pt = PaperTrail()
+
+    # Validate scope ids up front so a typo fails fast instead of silently scoping to nothing.
+    if paper or repo:
+        lib = pt.list_library()
+        if paper and paper not in lib["papers"]:
+            _fail(
+                f"No ingested paper '{paper}'. Available: {sorted(lib['papers']) or '(none)'}. "
+                "See `p2c list`."
+            )
+        if repo and repo not in lib["repos"]:
+            _fail(
+                f"No ingested repo '{repo}'. Available: {sorted(lib['repos']) or '(none)'}. "
+                "See `p2c list`."
+            )
 
     scope_parts = []
     if paper:
@@ -174,14 +227,20 @@ def ask(
     scope_label = f"  [scope: {', '.join(scope_parts)}]" if scope_parts else "  [scope: all]"
     typer.echo(f"Asking…{scope_label}")
 
-    result = PaperTrail().ask(
-        question,
-        direction=_parse_direction(direction),
-        k=k,
-        follow_refs=follow_refs,
-        paper_id=paper,
-        repo_id=repo,
-    )
+    try:
+        result = pt.ask(
+            question,
+            direction=_parse_direction(direction),
+            k=k,
+            follow_refs=follow_refs,
+            paper_id=paper,
+            repo_id=repo,
+        )
+    except PaperTrailError as exc:
+        _fail(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        _fail(f"Could not answer the question ({type(exc).__name__}): {exc}")
+
     _print_verdict(result)
 
 
