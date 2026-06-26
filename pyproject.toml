@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "PaperTrail — a Paper-to-Code Reproducibility Agent that reconciles an ML paper with its implementation and returns a cited verdict."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aliasgar Lokhandwala" }]
 dependencies = [
     "docling>=2.0.0",
     "voyageai>=0.3.0",
