@@ -142,11 +142,18 @@ def _render_ingest(service, settings) -> None:
 
     # -- Repo ----------------------------------------------------------------
     st.subheader("Code (repo)")
-    st.caption("Public GitHub URL or a local folder path.")
-    cols = st.columns(len(_EXAMPLE_REPOS))
-    for col, (name, url) in zip(cols, _EXAMPLE_REPOS.items()):
-        if col.button(name, key=f"ex_{name}", use_container_width=True, help=url):
-            st.session_state["repo_input"] = url
+    st.caption("Add a **new** repo: paste a public GitHub URL or a local folder path.")
+
+    # Quick-fill chips, only for examples you haven't already ingested (avoids the
+    # "this is already in my library, why does it want to ingest?" confusion).
+    already = set(service.list_library()["repos"])
+    examples = {n: u for n, u in _EXAMPLE_REPOS.items() if n not in already}
+    if examples:
+        st.caption("Or quick-fill an example into the box below:")
+        cols = st.columns(len(examples))
+        for col, (name, url) in zip(cols, examples.items()):
+            if col.button(f"＋ {name}", key=f"ex_{name}", use_container_width=True, help=f"Fill in {url}"):
+                st.session_state["repo_input"] = url
 
     repo = st.text_input(
         "Git URL or local path",
@@ -172,6 +179,7 @@ def _render_ingest(service, settings) -> None:
 def _render_library(service) -> dict:
     """Render the library list with delete buttons. Returns the library dict."""
     st.header("📚 Library")
+    st.caption("Already ingested — these persist across restarts. 🗑 removes one.")
     lib = service.list_library()
     papers, repos = lib["papers"], lib["repos"]
 
